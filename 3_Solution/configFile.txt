@@ -1,0 +1,8 @@
+CPU: 85%
+MemoriaUtilizata: 3200
+DiskUtilizatMB: 85%
+DiskReadKB: 10240
+DiskWriteKB: 10240
+NetRxKB: 2048  
+NetTxKB: 2048
+APP: htop

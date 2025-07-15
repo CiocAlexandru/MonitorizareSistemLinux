@@ -3,7 +3,35 @@
 monitorFile="/var/log/monitor.csv"
 hashFile="/var/log/hashFile.txt"
 packFile="/var/log/installedPack.txt"
-app="$1"
+configFile="/var/log/configFile.txt"
+
+cpuThres=0
+memThres=0
+diskThres=0
+diskReadThres=0
+diskWriteThres=0
+netRxThres=0
+netTxThres=0
+app=" " 
+
+
+
+
+
+function initializeThreshHolds {
+
+	echo -e "\n\n\n Configurare praguri alerte:"
+
+	cpuThres=`egrep "^CPU: " $configFile | cut -d" " -f2 | cut -d"%" -f1`
+	memThres=`egrep "^MemoriaUtilizata: " $configFile | cut -d" " -f2 `
+	diskThres=`egrep "^DiskUtilizatMB: " $configFile | cut -d" " -f2 | cut -d"%" -f1`
+	diskReadThres=`egrep "^DiskReadKB: " $configFile | cut -d" " -f2 `
+	diskWriteThres=`egrep "^DiskWriteKB: " $configFile | cut -d" " -f2 `
+	netRxThres=`egrep "^NetRxKB: " $configFile | cut -d" " -f2 `
+	netTxThres=`egrep "^NetTxKB: " $configFile | cut -d" " -f2 `
+	app=`egrep "^APP: " $configFile | cut -d" " -f2 `
+
+}
 
 
 
@@ -49,17 +77,35 @@ function monitorSystem {
 
     # CPU usage (%) folosind mpstat dacă e disponibil, altfel cu ps
     cpuPercent=$(ps -eo pcpu --no-headers | paste -sd+ - | bc)
+    cpuFirstPart=`echo $cpuPercent | cut -d"." -f1`
+    if [[ $cpuFirstPart -ge $cpuThres ]]
+    then
+    	echo -e "\nALERTA: Procentul de CPU depaseste valoarea $cpuThres % : $cpuPercent %"
+    fi
     cpuPercent="${cpuPercent}%"
 
     # Memorie utilizată (MB)
     memUsedMB=$(free -m | awk '/^Mem:/ {print $3}')
-
+    
+    if [[ $memUsedMB -ge $memThres ]] 
+    then
+    	echo -e "\nALERTA: Procentul de memorie Ram utilizata depaseste valoarea $memThres MB: $memUsedMB MB"
+    fi
+    
+    
     # Utilizare disk (%) pentru toate sistemele montate
     diskUsedPercent=$(df --total | awk '/total/ {print $5}')
+    diskFirstPart=`echo $diskUsedPercent | cut -d"%" -f1 | cut -d "." -f1`
+    
+    if [[ $diskFirstPart -ge $diskThres ]]
+    then
+    	echo -e "\nALERTA: Procentul de disk utilizat depaseste valoarea $diskThres %:  $diskFirstPart %"
+    fi
+    
     
     # Disk I/O - pentru sda (adaptează dacă ai alt device)
     disk1=$(awk '$3=="sda" {print $6, $10}' /proc/diskstats)
-    sleep 5
+    sleep 1
     disk2=$(awk '$3=="sda" {print $6, $10}' /proc/diskstats)
 
     read1=$(echo $disk1 | cut -d' ' -f1)
@@ -70,17 +116,39 @@ function monitorSystem {
     sectorSize=512
     diskReadKBPS=$(( (read2 - read1) * sectorSize / 1024 ))
     diskWriteKBPS=$(( (write2 - write1) * sectorSize / 1024 ))
-
+    
+    if [[ $diskReadKBPS -ge $diskReadThres ]] 
+    then
+    	echo -e "\nALERTA: Rata input de  utilizare a disk-ului depaseste valoarea $diskReadThres KB: $diskReadKBPS KB"
+    fi
+    
+    if [[ $diskWriteKBPS -ge $diskWriteThres ]] 
+    then
+    	echo -e "\nALERTA: Rata output de  utilizare a disk-ului depaseste valoarea $diskWriteThres KB: $diskWriteKBPS KB"
+    fi
+    
+    
     # Interfață rețea activă
     iface=$(ip route | awk '/default/ {print $5}' | head -n1)
     rx1=$(awk -v iface="$iface" '$0 ~ iface {gsub(/:/,"",$1); print $2}' /proc/net/dev)
     tx1=$(awk -v iface="$iface" '$0 ~ iface {gsub(/:/,"",$1); print $10}' /proc/net/dev)
-    sleep 5
+    sleep 1
     rx2=$(awk -v iface="$iface" '$0 ~ iface {gsub(/:/,"",$1); print $2}' /proc/net/dev)
     tx2=$(awk -v iface="$iface" '$0 ~ iface {gsub(/:/,"",$1); print $10}' /proc/net/dev)
 
     netRxKBPS=$(( (rx2 - rx1) / 1024 ))
     netTxKBPS=$(( (tx2 - tx1) / 1024 ))
+    
+    if [[ $netRxKBPS -ge $netRxThres ]] 
+    then
+    	echo -e "\nALERTA: Viteza de download retea depaseste valoarea $netRxThres KB: $netRxKBPS KB"
+    fi
+    
+    if [[ $netTxKBPS -ge $netTxThres ]] 
+    then
+    	echo -e "\nALERTA: Viteza de upload retea depaseste valoarea $netTxThres KB: $netTxKBPS KB"
+    fi
+    
 
     # Scriere în fișier CSV în formatul cerut
     echo "$timestamp $cpuPercent $memUsedMB ${diskUsedPercent} $diskReadKBPS $diskWriteKBPS $netRxKBPS $netTxKBPS" >> "$monitorFile"
@@ -233,15 +301,26 @@ function monitorApp {
 
         if [[ -z "$pid" ]]
         then
-                echo "$timestamp - Aplicația '$app' NU rulează."
+                echo "$timestamp - Aplicația "$app" NU rulează."
         return
         fi
 
         # CPU și memorie utilizată de proces
         cpu=$(ps -p "$pid" -o %cpu= | tr -d ' ')
+        
+        cpuFirstPart=`echo $cpu | cut -d"." -f1`
+    	if [[ $cpuFirstPart -ge $cpuThres ]]
+    	then
+    		echo -e "\nALERTA: Procentul de CPU al aplicatie $app depaseste valoarea $cpuThres % : $cpu %"
+    	fi
         mem=$(ps -p "$pid" -o rss= | tr -d ' ')
         memMB=$((mem / 1024))
-
+	
+	if [[ $memMB -ge $memThres ]] 
+    	then
+    		echo -e "\nALERTA: Procentul de memorie Ram utilizata de aplicatia $app depaseste valoarea $memThres MB: $memMB MB"
+    	fi
+	
         # Output pe ecran
         echo "$timestamp - Aplicația '$app' rulează."
         echo "$timestamp - $app (PID: $pid) -> CPU: ${cpu}%, Memorie: ${memMB}MB"
@@ -253,7 +332,8 @@ function monitorApp {
 
 function main {
 	
-	initialize
+	initializeThreshHolds
+	initialize	
 	
 	while true
 	do
@@ -264,7 +344,7 @@ function main {
 		packets
 		process
 		cronjob
-		monitorApp app
+		monitorApp
 		
 		sleep 60
 	done 
