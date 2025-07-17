@@ -3,7 +3,7 @@
 monitorFile="/var/log/monitor.csv"
 hashFile="/var/log/hashFile.txt"
 packFile="/var/log/installedPack.txt"
-configFile="/var/log/configFile.txt"
+configFile="/home/cioc/Practica/MonitorizareSistemLinux/3_Solution/configFile.txt"
 
 cpuThres=0
 memThres=0
@@ -22,14 +22,14 @@ function initializeThreshHolds {
 
 	echo -e "\n\n\n Configurare praguri alerte:"
 
-	cpuThres=`egrep "^CPU: " $configFile | cut -d" " -f2 | cut -d"%" -f1`
-	memThres=`egrep "^MemoriaUtilizata: " $configFile | cut -d" " -f2 `
-	diskThres=`egrep "^DiskUtilizatMB: " $configFile | cut -d" " -f2 | cut -d"%" -f1`
-	diskReadThres=`egrep "^DiskReadKB: " $configFile | cut -d" " -f2 `
-	diskWriteThres=`egrep "^DiskWriteKB: " $configFile | cut -d" " -f2 `
-	netRxThres=`egrep "^NetRxKB: " $configFile | cut -d" " -f2 `
-	netTxThres=`egrep "^NetTxKB: " $configFile | cut -d" " -f2 `
-	app=`egrep "^APP: " $configFile | cut -d" " -f2 `
+	cpuThres=`egrep "^CPU:" $configFile | cut -d":" -f2 | cut -d"%" -f1`
+	memThres=`egrep "^MemoriaUtilizata:" $configFile | cut -d":" -f2 `
+	diskThres=`egrep "^DiskUtilizatMB:" $configFile | cut -d":" -f2 | cut -d"%" -f1`
+	diskReadThres=`egrep "^DiskReadKB:" $configFile | cut -d":" -f2 `
+	diskWriteThres=`egrep "^DiskWriteKB:" $configFile | cut -d":" -f2 `
+	netRxThres=`egrep "^NetRxKB:" $configFile | cut -d":" -f2 `
+	netTxThres=`egrep "^NetTxKB:" $configFile | cut -d":" -f2 `
+	app=`egrep "^APP:" $configFile | cut -d":" -f2 `
 
 }
 
@@ -161,39 +161,107 @@ function monitorSystem {
 function top {
 
     echo -e "\n\n\nTop 3 procese după CPU utilizat"
-    ps -eo pid,comm,%cpu --sort=-%cpu | head -n 4
+    ps -eo pid,comm,%cpu, --sort=-%cpu | head -n 4 | tail -n 3 | while read -r pid comm cpu
+    do
+    	echo "Proces: $comm (PID: $pid) → CPU: $cpu%"
+    	# Verificare CPU
+    	cpuFirstPart=$(echo "$cpu" | cut -d"." -f1)
+    	if [[ $cpuFirstPart -ge $cpuThres ]]; then
+        	echo " ALERTA CPU: Procesul '$comm' depășește $cpuThres% CPU → $cpu%"
+    	fi
+    done
 
     echo "Top 3 procese după memorie utilizată (RSS MB)"
-    ps -eo pid,comm,rss --sort=-rss | head -n 4 | awk 'NR==1 {print $0} NR>1 {printf "%s %s %.1fMB\n", $1, $2, $3/1024}'
+    ps -eo pid,rss,comm --sort=-rss | head -n 4 | tail -n 3 | while read -r pid rss comm
+    do
 
-    echo -"Disk I/O rate (KB/s)"
-    diskDevice=$(lsblk -ndo NAME | grep '^sd[a-z]$' | head -n1)
-    [ -z "$diskDevice" ] && diskDevice="sda"
+    	memMB=$((rss / 1024))
+    	echo "Process: $comm ( PID: $pid) ->RAM: ${memMB}MB"
+    	if [[ $memMB -ge $memThres ]]
+    	then
+        	echo "ALERTA: Procesul '$comm' (PID $pid) folosește $memMB MB, depășind pragul de $memThres MB"
+    	fi
+    done
 
-    read1=$(awk -v dev="$diskDevice" '$3==dev {print $6}' /proc/diskstats)
-    write1=$(awk -v dev="$diskDevice" '$3==dev {print $10}' /proc/diskstats)
-    sleep 5
-    read2=$(awk -v dev="$diskDevice" '$3==dev {print $6}' /proc/diskstats)
-    write2=$(awk -v dev="$diskDevice" '$3==dev {print $10}' /proc/diskstats)
+	echo -e "\nTop 3 procese după Disk I/O (KB total citit + scris):"
+	# Inițializăm un array temporar
+	declare -a ioData=()
 
-    sectorSize=512
-    readKBps=$(( (read2 - read1) * sectorSize / 1024 ))
-    writeKBps=$(( (write2 - write1) * sectorSize / 1024 ))
+	# Iterăm prin toate PIDs
+	for pid in $(ls /proc | grep '^[0-9]\+$')
+	do
+    		if [[ -r /proc/$pid/io && -r /proc/$pid/cmdline ]]; then
+        	read_bytes=$(sudo egrep "^read_bytes:" /proc/$pid/io|cut -d" " -f2)
+        	write_bytes=$(sudo egrep "^write_bytes:" /proc/$pid/io|cut -d" " -f2)
+        	cmd=$(tr '\0' ' ' < /proc/$pid/cmdline | cut -d' ' -f1)
 
-    echo "Read: ${readKBps}KB/s  Write: ${writeKBps}KB/s"
+        	read_bytes=${read_bytes:-0}
+        	write_bytes=${write_bytes:-0}
+        	total_kb=$(( (read_bytes + write_bytes) / 1024 ))
 
-    echo -e "\nUtilizare rețea (KB/s)]"
-    iface=$(ip route | awk '/default/ {print $5}' | head -n1)
-    rx1=$(awk -v iface="$iface" '$0 ~ iface {gsub(/:/,"",$1); print $2}' /proc/net/dev)
-    tx1=$(awk -v iface="$iface" '$0 ~ iface {gsub(/:/,"",$1); print $10}' /proc/net/dev)
-    sleep 1
-    rx2=$(awk -v iface="$iface" '$0 ~ iface {gsub(/:/,"",$1); print $2}' /proc/net/dev)
-    tx2=$(awk -v iface="$iface" '$0 ~ iface {gsub(/:/,"",$1); print $10}' /proc/net/dev)
+        	ioData+=("$total_kb:$pid:$cmd")
+    	fi
+	done
 
-    rxKBps=$(( (rx2 - rx1) / 1024 ))
-    txKBps=$(( (tx2 - tx1) / 1024 ))
+	disktotal=$((diskReadThres + diskWriteThres))
 
-    echo "RX: ${rxKBps}KB/s  TX: ${txKBps}KB/s"
+	# Sortăm array-ul și afișăm top 3
+	for entry in $(printf "%s\n" "${ioData[@]}" | sort -rn | head -n 3)
+	do
+    		total_kb=$(echo "$entry" | cut -d':' -f1)
+    		pid=$(echo "$entry" | cut -d':' -f2)
+    		cmd=$(echo "$entry" | cut -d':' -f3)
+    		echo "PID: $pid  CMD: $cmd  Disk I/O: ${total_kb}KB"
+    
+    		if [[ $total_kb -ge $((diskReadThres + diskWriteThres)) ]]; then
+       			 echo "ALERTĂ: Procesul '$cmd' (PID $pid) a depășit pragul total $disktotal KB de I/O: ${total_kb}KB"
+    		fi
+	done
+
+    echo -e "\nTop 3 procese după utilizare rețea (KB/s):"
+
+declare -a netData=()
+
+for pid in $(ls /proc | grep '^[0-9]\+$'); do
+    if [[ -r /proc/$pid/net/dev && -r /proc/$pid/cmdline ]]
+    then
+        iface=$(ip route | awk '/default/ {print $5}' | head -n1)
+
+        rx1=$(sudo awk -v iface="$iface" '$0 ~ iface {gsub(/:/,"",$1); print $2}' /proc/$pid/net/dev 2>/dev/null)
+        tx1=$(sudo awk -v iface="$iface" '$0 ~ iface {gsub(/:/,"",$1); print $10}' /proc/$pid/net/dev 2>/dev/null)
+
+        sleep 1
+
+        rx2=$(sudo awk -v iface="$iface" '$0 ~ iface {gsub(/:/,"",$1); print $2}' /proc/$pid/net/dev 2>/dev/null)
+        tx2=$(sudo awk -v iface="$iface" '$0 ~ iface {gsub(/:/,"",$1); print $10}' /proc/$pid/net/dev 2>/dev/null)
+
+        if [[ -n "$rx1" && -n "$rx2" && -n "$tx1" && -n "$tx2" ]]; then
+            deltaRx=$(( (rx2 - rx1) / 1024 ))
+            deltaTx=$(( (tx2 - tx1) / 1024 ))
+            total=$((deltaRx + deltaTx))
+
+            cmd=$(tr '\0' ' ' < /proc/$pid/cmdline | cut -d' ' -f1)
+            netData+=("$total:$deltaRx:$deltaTx:$pid:$cmd")
+        fi
+    fi
+done
+
+totalNetThres=$((netRxThres + netTxThres))
+
+for entry in $(printf "%s\n" "${netData[@]}" | sort -rn | head -n 3); do
+    totalKB=$(echo "$entry" | cut -d':' -f1)
+    rxKB=$(echo "$entry" | cut -d':' -f2)
+    txKB=$(echo "$entry" | cut -d':' -f3)
+    pid=$(echo "$entry" | cut -d':' -f4)
+    cmd=$(echo "$entry" | cut -d':' -f5)
+
+    echo "PID: $pid  CMD: $cmd  RX: ${rxKB}KB/s  TX: ${txKB}KB/s  TOTAL: ${totalKB}KB/s"
+
+    if [[ $totalKB -ge $totalNetThres ]]; then
+        echo "ALERTĂ: Procesul '$cmd' (PID $pid) a depășit pragul de rețea total $totalNetThres KB/s → ${totalKB}KB/s"
+    fi
+done
+
 }
 
 
@@ -225,7 +293,14 @@ function monitorFiles {
 
 function ports {
 	echo -e "\n\n\nPorturile de retea deschise:"
-	ss -tuln | egrep "LISTEN"
+	ss -tuln | grep LISTEN | while read -r linie
+	do
+		protocol=`echo "$linie" | cut -d" " -f1`
+    		port=$(echo "$linie" | tr -s " " | cut -d" " -f5 | rev | cut -d":" -f1 |rev )
+                adresaPort=$(echo "$linie" | tr -s " " | cut -d" " -f5|rev | cut -d":" -f2 |rev )
+                echo " ALERTA: Port deschis: $port (adresa completă: $adresaPort) foloseste protocolul $protocol"
+	done
+
 }
 
 
@@ -249,8 +324,25 @@ function packets {
 
 
 function process {
-	echo -e "\n\n\nProcese cu drepturi de root:"
-   	ps -eo user,pid,ppid,cmd --sort=user | egrep '^root' 
+    
+    echo -e "\n\n\nProcese cu drepturi de root (detalii complete):"
+
+    ps -eo user,pid,%cpu,rss,comm --sort=-%cpu | grep '^root'|tr -s " " | while read -r user pid cpu rss comm
+    do
+    	memMB=$((rss / 1024))
+
+    	# Afișare toate câmpurile pentru comparare
+    	echo "Proces ROOT → $comm (PID: $pid)"
+    	cpuFirstPart=`echo $cpu | cut -d"." -f1`
+    	if [[ $cpuFirstPart -ge $cpuThres ]]
+    	then
+    		echo  -e "ALERTA: Procentul de CPU depaseste valoarea $cpuThres % : $cpu %\n\n"
+    	fi
+    	if [[ $memMB -ge $memThres ]] 
+    	then
+    		echo -e "ALERTA: Procentul de memorie Ram utilizata depaseste valoarea $memThres MB: $memMB MB\n\n"
+    	fi
+    done
 }
 
 
@@ -304,6 +396,9 @@ function monitorApp {
                 echo "$timestamp - Aplicația "$app" NU rulează."
         return
         fi
+        
+        echo "$timestamp - Aplicația '$app' rulează."
+        echo "$timestamp - $app (PID: $pid) -> CPU: ${cpu}%, Memorie: ${memMB}MB"
 
         # CPU și memorie utilizată de proces
         cpu=$(ps -p "$pid" -o %cpu= | tr -d ' ')
@@ -321,9 +416,31 @@ function monitorApp {
     		echo -e "\nALERTA: Procentul de memorie Ram utilizata de aplicatia $app depaseste valoarea $memThres MB: $memMB MB"
     	fi
 	
-        # Output pe ecran
-        echo "$timestamp - Aplicația '$app' rulează."
-        echo "$timestamp - $app (PID: $pid) -> CPU: ${cpu}%, Memorie: ${memMB}MB"
+        
+        
+        # Proces părinte (PPID)
+	ppid=$(ps -p "$pid" -o ppid= | tr -d ' ')
+	parent_process=$(ps -p "$ppid" -o comm= 2>/dev/null)
+	echo "→ Proces părinte (PPID: $ppid) → $parent_process"
+	
+	
+	# Procese copil (dacă există)
+	child_pids=$(pgrep -P "$pid")
+
+	
+
+	if [[ -n "$child_pids" ]]
+	then
+    		echo " Procese copil:"
+    		for child in $child_pids
+    		do
+        		child_name=$(ps -p "$child" -o comm= 2>/dev/null)
+        		echo "   - PID: $child, Proces: $child_name"
+    		done
+    	
+	else
+    		echo " Nu există procese copil active!"
+	fi
 }
 
 
