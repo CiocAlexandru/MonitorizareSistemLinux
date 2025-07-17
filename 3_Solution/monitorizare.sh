@@ -6,7 +6,7 @@ packFile="/var/log/installedPack.txt"
 configFile="/home/cioc/Practica/MonitorizareSistemLinux/3_Solution/configFile.txt"
 alertFile="/var/log/alert.log"
 logFile="/var/log/file.log"
-
+monitorPendingFile="/var/log/monitorPending.txt"
 
 cpuThres=0
 memThres=0
@@ -59,6 +59,12 @@ function initialize {
 	then
 		echo -e "Initializare fisier de alerta!" >> $logFile
 		touch $alertFile
+	fi
+	
+	if [[ ! -f $monitorPendingFile ]]
+	then
+		echo -e "Initializare fisier de pending!" >> $logFile
+		touch $monitorPendingFile
 	fi
 	
 }
@@ -280,17 +286,11 @@ function monitorFiles {
 		if [[ $suma != $sumaVeche ]]
 		then
 			echo "ALERTA: $f a fost modificat, $sumaVeche old , $suma new!" | tee -a "$alertFile"
-			echo -n "Vrei să actualizezi hash-ul salvat pentru $f? (da/nu): "
-        		read -r raspuns
-
-        		if [[ "$raspuns" == "da" ]]
-        		then
-            	
-            			sed -i "s|^$sumaVeche $Denumire|$suma $Denumire|" "$hashFile"
-            			echo "Hash actualizat pentru $f." >> $logFile
-        		else
-            			echo "Nu s-a actualizat hash-ul pentru $f." >> $logFile
-        		fi
+			liniePending="HASH_UPDATE $f $suma"
+            		if ! grep -Fxq "$liniePending" "$monitorPendingFile"
+            		then
+                		echo "$liniePending" >> "$monitorPendingFile"
+           		 fi
 		else
 			echo "Nu s-a modificat nimic la fisierul $f" >> $logFile
 		fi
@@ -327,14 +327,10 @@ function packets {
 		if [[ -z "$verificarePachet" ]]
 		then
 			echo "ALERTA: Pachetul $pachet este nou instalat" | tee -a "$alertFile"
-			echo -n "Vrei să salvezi acest pachet în lista de referință? (da/nu): "
-           		 read -r raspuns
-            		if [[ "$raspuns" == "da" ]]
+			liniePending="PACKAGE_ADD $pachet"
+            		if ! grep -Fxq "$liniePending" "$monitorPendingFile"
             		then
-               			echo "$pachet" >> "$packFile"
-                		echo "Pachetul '$pachet' a fost adăugat în $packFile." >> $logFile
-            		else
-                		echo "Pachetul '$pachet' NU a fost adăugat." >> $logFile
+                		echo "$liniePending" >> "$monitorPendingFile"
             		fi
 		fi
 	done 
@@ -466,6 +462,9 @@ function monitorApp {
     		echo " Nu există procese copil active!" >> $logFile
 	fi
 }
+
+
+
 
 
 
