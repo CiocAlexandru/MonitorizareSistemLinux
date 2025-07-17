@@ -6,3 +6,4 @@ DiskWriteKB:100000
 NetRxKB:2048  
 NetTxKB:2048
 APP:bash
+ConexiuniMax:20
