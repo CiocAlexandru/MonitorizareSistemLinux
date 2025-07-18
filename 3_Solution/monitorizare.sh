@@ -105,6 +105,7 @@ function monitorSystem {
     if [[ $cpuFirstPart -ge $cpuThres ]]
     then
     	echo  "ALERTA: Procentul de CPU depaseste valoarea $cpuThres % : $cpuPercent %" >> $alertFile
+    	echo  "ALERTA: Procentul de CPU depaseste valoarea $cpuThres % : $cpuPercent %" >> $logFile
     fi
     cpuPercent="${cpuPercent}%"
 
@@ -114,6 +115,7 @@ function monitorSystem {
     if [[ $memUsedMB -ge $memThres ]] 
     then
     	echo  "ALERTA: Procentul de memorie Ram utilizata depaseste valoarea $memThres MB: $memUsedMB MB" >> $alertFile
+    	echo  "ALERTA: Procentul de memorie Ram utilizata depaseste valoarea $memThres MB: $memUsedMB MB" >> $logFile
     fi
     
     
@@ -124,6 +126,7 @@ function monitorSystem {
     if [[ $diskFirstPart -ge $diskThres ]]
     then
     	echo  "ALERTA: Procentul de disk utilizat depaseste valoarea $diskThres %:  $diskFirstPart %" >> $alertFile
+    	echo  "ALERTA: Procentul de disk utilizat depaseste valoarea $diskThres %:  $diskFirstPart %" >> $logFile
     fi
     
     
@@ -144,11 +147,13 @@ function monitorSystem {
     if [[ $diskReadKBPS -ge $diskReadThres ]] 
     then
     	echo  "ALERTA: Rata input de  utilizare a disk-ului depaseste valoarea $diskReadThres KB: $diskReadKBPS KB" >> $alertFile
+    	echo  "ALERTA: Rata input de  utilizare a disk-ului depaseste valoarea $diskReadThres KB: $diskReadKBPS KB" >> $logFile
     fi
     
     if [[ $diskWriteKBPS -ge $diskWriteThres ]] 
     then
     	echo "ALERTA: Rata output de  utilizare a disk-ului depaseste valoarea $diskWriteThres KB: $diskWriteKBPS KB" >> $alertFile
+    	echo "ALERTA: Rata output de  utilizare a disk-ului depaseste valoarea $diskWriteThres KB: $diskWriteKBPS KB" >> $logFile
     fi
     
     
@@ -166,11 +171,13 @@ function monitorSystem {
     if [[ $netRxKBPS -ge $netRxThres ]] 
     then
     	echo  "ALERTA: Viteza de download retea depaseste valoarea $netRxThres KB: $netRxKBPS KB" >> $alertFile
+    	echo  "ALERTA: Viteza de download retea depaseste valoarea $netRxThres KB: $netRxKBPS KB" >> $logFile
     fi
     
     if [[ $netTxKBPS -ge $netTxThres ]] 
     then
     	echo  "ALERTA: Viteza de upload retea depaseste valoarea $netTxThres KB: $netTxKBPS KB" >> $alertFile
+    	echo  "ALERTA: Viteza de upload retea depaseste valoarea $netTxThres KB: $netTxKBPS KB" >> $logFile
     fi
     
 
@@ -195,6 +202,7 @@ function top {
     	cpuFirstPart=$(echo "$cpu" | cut -d"." -f1)
     	if [[ $cpuFirstPart -ge $cpuThres ]]; then
         	echo "ALERTA CPU: Procesul '$comm' depășește $cpuThres% CPU → $cpu%" >> $alertFile
+        	echo "ALERTA CPU: Procesul '$comm' depășește $cpuThres% CPU → $cpu%" >> $logFile
     	fi
     done
 
@@ -207,6 +215,7 @@ function top {
     	if [[ $memMB -ge $memThres ]]
     	then
         	echo "ALERTA: Procesul '$comm' (PID $pid) folosește $memMB MB, depășind pragul de $memThres MB" >> $alertFile
+        	echo "ALERTA: Procesul '$comm' (PID $pid) folosește $memMB MB, depășind pragul de $memThres MB" >> $logFile
     	fi
     done
 
@@ -240,8 +249,10 @@ function top {
     		cmd=$(echo "$entry" | cut -d':' -f3)
     		echo "PID: $pid  CMD: $cmd  Disk I/O: ${total_kb}KB" >> $logFile
     
-    		if [[ $total_kb -ge $((diskReadThres + diskWriteThres)) ]]; then
+    		if [[ $total_kb -ge $((diskReadThres + diskWriteThres)) ]]
+    		then
        			 echo "ALERTA: Procesul '$cmd' (PID $pid) a depășit pragul total $disktotal KB de I/O: ${total_kb}KB" >> $alertFile
+       			 echo "ALERTA: Procesul '$cmd' (PID $pid) a depășit pragul total $disktotal KB de I/O: ${total_kb}KB" >> $logFile
     		fi
 	done
 
@@ -263,6 +274,7 @@ function top {
         		if [[ "$count" -ge $conexiuniMax ]]
         		then
            			 echo "ALERTA: Procesul '$cmd' (PID $pid) are un număr ridicat de conexiuni: $count, depasind pragul: $conexiuniMax" >> $alertFile
+           			 echo "ALERTA: Procesul '$cmd' (PID $pid) are un număr ridicat de conexiuni: $count, depasind pragul: $conexiuniMax" >> $logFile
         		fi
     		done
 	fi
@@ -285,7 +297,8 @@ function monitorFiles {
 		sumaVeche=`echo $lineDen | cut -d" " -f1`
 		if [[ $suma != $sumaVeche ]]
 		then
-			echo "ALERTA: $f a fost modificat, $sumaVeche old , $suma new!" | tee -a "$alertFile"
+			echo "ALERTA: $f a fost modificat, $sumaVeche old , $suma new!" >> "$alertFile"
+			echo "ALERTA: $f a fost modificat, $sumaVeche old , $suma new!" >> "$logFileFile"
 			liniePending="HASH_UPDATE $f $suma"
             		if ! grep -Fxq "$liniePending" "$monitorPendingFile"
             		then
@@ -310,6 +323,7 @@ function ports {
                 adresaPort=$(echo "$linie" | tr -s " " | cut -d" " -f5|rev | cut -d":" -f2 |rev )
                 echo "Port: $port (adresa completă: $adresaPort) foloseste protocolul $protocol" >> $logFile
                 echo "ALERTA: Port deschis: $port (adresa completă: $adresaPort) foloseste protocolul $protocol" >> $alertFile
+                echo "ALERTA: Port deschis: $port (adresa completă: $adresaPort) foloseste protocolul $protocol" >> logFile
 	done
 
 }
@@ -326,7 +340,8 @@ function packets {
 		verificarePachet=`grep -Fx "$pachet" "$packFile"`
 		if [[ -z "$verificarePachet" ]]
 		then
-			echo "ALERTA: Pachetul $pachet este nou instalat" | tee -a "$alertFile"
+			echo "ALERTA: Pachetul $pachet este nou instalat" >>"$alertFile"
+			echo "ALERTA: Pachetul $pachet este nou instalat" >>"$logFile"
 			liniePending="PACKAGE_ADD $pachet"
             		if ! grep -Fxq "$liniePending" "$monitorPendingFile"
             		then
@@ -353,10 +368,12 @@ function process {
     	if [[ $cpuFirstPart -ge $cpuThres ]]
     	then
     		echo  -e "ALERTA: Procentul de CPU depaseste valoarea $cpuThres % : $cpu %" >> $alertFile
+    		echo  -e "ALERTA: Procentul de CPU depaseste valoarea $cpuThres % : $cpu %" >> $logFile
     	fi
     	if [[ $memMB -ge $memThres ]] 
     	then
     		echo -e "ALERTA: Procentul de memorie Ram utilizata depaseste valoarea $memThres MB: $memMB MB" >> $alertFile
+    		echo -e "ALERTA: Procentul de memorie Ram utilizata depaseste valoarea $memThres MB: $memMB MB" >> $logFile
     	fi
     done
 }
@@ -427,6 +444,7 @@ function monitorApp {
     	if [[ $cpuFirstPart -ge $cpuThres ]]
     	then
     		echo  "ALERTA: Procentul de CPU al aplicatie $app depaseste valoarea $cpuThres % : $cpu %" >> $alertFile
+    		echo  "ALERTA: Procentul de CPU al aplicatie $app depaseste valoarea $cpuThres % : $cpu %" >> $logFile
     	fi
         
         
@@ -434,6 +452,7 @@ function monitorApp {
 	if [[ $memMB -ge $memThres ]] 
     	then
     		echo  "ALERTA: Procentul de memorie Ram utilizata de aplicatia $app depaseste valoarea $memThres MB: $memMB MB" >> $alertFile
+    		echo  "ALERTA: Procentul de memorie Ram utilizata de aplicatia $app depaseste valoarea $memThres MB: $memMB MB" >> $logFile
     	fi
 	
         
