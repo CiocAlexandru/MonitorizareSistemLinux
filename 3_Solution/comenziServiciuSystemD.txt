@@ -1,0 +1,4 @@
+sudo systemctl stop monitorizare.service
+sudo systemctl daemon-reexec
+sudo systemctl start monitorizare.service
+
