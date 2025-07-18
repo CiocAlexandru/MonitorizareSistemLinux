@@ -9,7 +9,7 @@ ERR_PATH="/var/log/${SERVICE_NAME}.err"
 
 # === VERIFICĂM EXISTENȚA SCRIPTULUI ===
 if [[ ! -f "$SCRIPT_PATH" ]]; then
-    echo "❌ Scriptul $SCRIPT_PATH nu există. Modifică variabila SCRIPT_PATH."
+    echo " Scriptul $SCRIPT_PATH nu există. Modifică variabila SCRIPT_PATH."
     exit 1
 fi
 
@@ -33,11 +33,11 @@ StandardError=file:$ERR_PATH
 WantedBy=multi-user.target
 EOF
 
-# === REÎNCĂRCĂM systemd și activăm serviciul ===
+# REINCARCAM systemd și activam serviciul
 sudo systemctl daemon-reexec
 sudo systemctl enable "$SERVICE_NAME"
 sudo systemctl start "$SERVICE_NAME"
 
-echo "✅ Serviciul '$SERVICE_NAME' a fost instalat și pornit."
-echo "📋 Status: sudo systemctl status $SERVICE_NAME"
+echo "Serviciul '$SERVICE_NAME' a fost instalat și pornit."
+echo " Status: sudo systemctl status $SERVICE_NAME"
 

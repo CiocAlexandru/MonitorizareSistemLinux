@@ -1,5 +1,7 @@
 #!/bin/bash
 
+
+
 monitorFile="/var/log/monitor.csv"
 hashFile="/var/log/hashFile.txt"
 packFile="/var/log/installedPack.txt"
